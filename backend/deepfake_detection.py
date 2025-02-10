@@ -1,138 +1,109 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.models as models
+import tensorflow as tf
 import cv2
 import numpy as np
+import sys
 import os
 import json
-import sys
+from tensorflow.keras.models import load_model
 
-# Define the Model class
-class Model(nn.Module):
-    def __init__(self, num_classes=2, latent_dim=2048, lstm_layers=1, hidden_dim=2048, bidirectional=False):
-        super(Model, self).__init__()
+# Ensure a video file is provided
+if len(sys.argv) < 2:
+    print(json.dumps({"error": "No video file provided"}))
+    sys.exit(1)
+
+video_path = sys.argv[1]  # Get video path from command-line argument
+
+# Ensure the video file exists
+if not os.path.exists(video_path):
+    print(json.dumps({"error": "Video file not found"}))
+    sys.exit(1)
+
+# Load the trained deepfake detection model
+model = load_model('model/deepfake_detection_lstm.h5', compile=False)
+
+# Define input shape
+input_shape = (128, 128, 3)
+
+# Load OpenCV's Haar Cascade for face detection
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+# Open the video file
+cap = cv2.VideoCapture(video_path)
+frame_rate = cap.get(cv2.CAP_PROP_FPS)
+
+# Initialize counters for statistics
+total_frames = 0
+real_frames = 0
+fake_frames = 0
+total_confidence = 0.0
+confidence_scores = []  # List to hold confidence scores for each 5th frame
+
+while cap.isOpened():
+    frame_id = int(cap.get(cv2.CAP_PROP_POS_FRAMES))  # Get current frame ID
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Process frames at specified intervals
+    if frame_id % 5 == 0:
+        # Convert frame to grayscale for face detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        model = models.resnext50_32x4d(pretrained=True)
-        self.model = nn.Sequential(*list(model.children())[:-2])
-        self.lstm = nn.LSTM(latent_dim, hidden_dim, lstm_layers, bidirectional)
-        self.relu = nn.LeakyReLU()
-        self.dp = nn.Dropout(0.4)
-        self.linear1 = nn.Linear(2048, num_classes)
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        # Detect faces in the frame
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    def forward(self, x):
-        batch_size, seq_length, c, h, w = x.shape
-        x = x.view(batch_size * seq_length, c, h, w)
-        fmap = self.model(x)
-        x = self.avgpool(fmap)
-        x = x.view(batch_size, seq_length, 2048)
-        x_lstm, _ = self.lstm(x, None)
-        return fmap, self.dp(self.linear1(x_lstm[:, -1, :]))
+        # Process detected faces
+        for (x, y, w, h) in faces:
+            total_frames += 1  # Increment frame count
 
-# Load the model with defined architecture
-def load_complete_model(saved_model_path):
-    model = Model(num_classes=2)  # Ensure architecture is defined before loading weights
-    model.load_state_dict(torch.load(saved_model_path, map_location=torch.device('cpu')))
-    model.eval()
-    return model
+            # Extract and preprocess face region
+            face_img = frame[y:y+h, x:x+w]
+            face_img = cv2.resize(face_img, (128, 128)) / 255.0
+            face_img = np.expand_dims(face_img, axis=0)  # Add batch dimension
 
-# Extract frames from the video
-def extract_frames(video_path, frame_size=(224, 224), num_frames=16):
-    video = cv2.VideoCapture(video_path)
-    frames = []
+            try:
+                # Model prediction
+                prediction = model.predict(face_img, verbose=0)  # Suppress logs
+                confidence_score = float(prediction[0][0])  # Ensure it's a float
+                
+                predicted_class = 1 if confidence_score >= 0.5 else 0
+                
+                # Adjust confidence score for correct interpretation
+                if predicted_class == 0:
+                    confidence_score = 1 - confidence_score
 
-    while len(frames) < num_frames:
-        ret, frame = video.read()
-        if not ret:
-            break
-        frame = cv2.resize(frame, frame_size)
-        frame = frame / 255.0
-        frame = np.transpose(frame, (2, 0, 1))
-        frames.append(frame)
+                # Count real and fake frames
+                if predicted_class == 1:
+                    fake_frames += 1
+                else:
+                    real_frames += 1
 
-    video.release()
+                # Accumulate confidence score
+                total_confidence += confidence_score
 
-    while len(frames) < num_frames:
-        frames.append(frames[-1])
+                # Append confidence score for every 5th frame
+                confidence_scores.append(confidence_score)
 
-    frames = np.stack(frames, axis=0)
-    return torch.tensor(frames, dtype=torch.float32).unsqueeze(0)
+            except Exception as e:
+                print(json.dumps({"error": f"Prediction error: {str(e)}"}))
+                sys.exit(1)
 
-# Predict using the model
-def predict(model, frames):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    frames = frames.to(device)
+# Calculate final average confidence
+average_confidence = round(total_confidence / total_frames, 4) if total_frames > 0 else 0
 
-    with torch.no_grad():
-        _, output = model(frames)
+# Determine final video classification
+final_prediction = "Real" if real_frames >= fake_frames else "Fake"
 
-    probabilities = F.softmax(output, dim=1)
-    predicted_class = torch.argmax(probabilities, dim=1).item()
-    confidence_score = probabilities[0, predicted_class].item()
+# Prepare JSON output
+result = {
+    "video": os.path.basename(video_path),
+    "prediction": final_prediction,
+    "confidence": average_confidence,
+    "confidence_scores": confidence_scores  # Add the list of confidence scores
+}
 
-    return predicted_class, confidence_score, probabilities
+# Ensure ONLY valid JSON is printed
+sys.stdout.write(json.dumps(result) + "\n")  # Avoid unwanted prints
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No video file provided"}))
-        sys.exit(1)
-
-    video_path = sys.argv[1]  # Get the video path from command-line argument
-
-    if not os.path.exists(video_path):
-        print(json.dumps({"error": "Video file not found"}))
-        sys.exit(1)
-
-    saved_model_path = "model/df_model.pt"
-    model = load_complete_model(saved_model_path)
-
-    frames = extract_frames(video_path)
-    predicted_class, confidence_score, probabilities = predict(model, frames)
-
-    # Prepare JSON output
-    result = {
-        "video": os.path.basename(video_path),
-        "prediction": "Real" if predicted_class == 1 else "Fake",
-        "confidence": confidence_score
-    }
-
-    print(json.dumps(result))  # Ensure output is valid JSON
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Release resources
+cap.release()

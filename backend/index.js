@@ -60,13 +60,17 @@ app.post("/api/detect", upload.single("video"), (req, res) => {
     try {
       const result = JSON.parse(stdout);
 
-      // Extract the confidence score from the deepfake detection result
-      const confidenceScore = result.confidence;
+      // Extract the confidence scores from the deepfake detection result
+      const confidenceScores = result.confidence_scores;
 
-      // Run Face Mesh Detection with confidence score passed as an argument
+      // Run Face Mesh Detection with confidence scores passed as an argument
       const faceMeshCommand = isWindows
-        ? `venv\\Scripts\\python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" ${confidenceScore}`
-        : `source venv/bin/activate && python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" ${confidenceScore}`;
+        ? `venv\\Scripts\\python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" ${JSON.stringify(
+            confidenceScores
+          )}`
+        : `source venv/bin/activate && python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" ${JSON.stringify(
+            confidenceScores
+          )}`;
 
       exec(faceMeshCommand, (meshError, meshStdout, meshStderr) => {
         if (meshError) {

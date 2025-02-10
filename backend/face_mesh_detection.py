@@ -3,12 +3,11 @@ import mediapipe as mp
 import sys
 import os
 import subprocess
-import random  # Import the random module
 
 # Read arguments
 input_video = sys.argv[1]
 output_video = sys.argv[2]
-confidence_score = float(sys.argv[3])  # Get the confidence score from command-line arguments
+confidence_scores = eval(sys.argv[3])  # Get the confidence scores passed as a list
 
 # Temporary directory to store frames
 temp_dir = "temp_frames"
@@ -40,6 +39,8 @@ frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 
 frame_count = 0
+last_displayed_confidence = None  # This will store the last displayed confidence value
+confidence_index = 0  # Index for confidence_scores
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -52,33 +53,35 @@ while cap.isOpened():
     # Process frame for face mesh
     results = face_mesh.process(frame_rgb)
 
-    # Draw face mesh
+    # Update confidence score every 5th frame
+    if frame_count % 5 == 0:  # Every 5th frame, update the confidence score
+        if confidence_index < len(confidence_scores):
+            last_displayed_confidence = confidence_scores[confidence_index]
+            confidence_index += 1
+
+    # Draw face mesh and display confidence score
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
             mp_drawing.draw_landmarks(frame, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION, drawing_spec, drawing_spec)
             mp_drawing.draw_landmarks(frame, face_landmarks, mp_face_mesh.FACEMESH_CONTOURS, drawing_spec, drawing_spec)
 
-            # Get the top-right corner of the face mesh (using landmark points)
-            right_eye = face_landmarks.landmark[33]  # Right eye (landmark 33)
-            nose = face_landmarks.landmark[1]  # Nose (landmark 1)
-            top_right = face_landmarks.landmark[263]  # Top right of the face (landmark 263)
+            # Display the confidence score for the current block of frames
+            if last_displayed_confidence is not None:
+                text = f"{last_displayed_confidence * 100:.2f}%"  # Display the confidence score
 
-            # Convert normalized coordinates to pixel coordinates
-            h, w, _ = frame.shape
-            top_right_x = int(top_right.x * w)
-            top_right_y = int(top_right.y * h)
+                # Get position to display the text
+                right_eye = face_landmarks.landmark[33]  # Right eye (landmark 33)
+                nose = face_landmarks.landmark[1]  # Nose (landmark 1)
+                top_right = face_landmarks.landmark[263]  # Top right of the face (landmark 263)
 
-            # Display fluctuated confidence score every 5th frame
-            if frame_count % 5 == 0:  # Every 5th frame
-                fluctuated_score = random.uniform((confidence_score * 100) - 3, (confidence_score * 100) + 3)
-                fluctuated_score = min(max(fluctuated_score, 0), 100)
-                text = f"{fluctuated_score:.2f}%"  # Display the fluctuated score
-            # else:
-            #     text = f"{confidence_score * 100:.2f}%"  # Display the fixed confidence score
+                # Convert normalized coordinates to pixel coordinates
+                h, w, _ = frame.shape
+                top_right_x = int(top_right.x * w)
+                top_right_y = int(top_right.y * h)
 
-            # Put the text on the frame
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame, text, (top_right_x - 250, top_right_y - 10), font, 0.8, (0, 0, 139), 2, cv2.LINE_AA)
+                # Put the text on the frame
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                cv2.putText(frame, text, (top_right_x - 250, top_right_y - 10), font, 0.8, (0, 0, 139), 2, cv2.LINE_AA)
 
     # Save frame as an image
     frame_filename = os.path.join(temp_dir, f"frame_{frame_count:04d}.png")
@@ -89,22 +92,17 @@ cap.release()
 cv2.destroyAllWindows()
 
 # Use FFmpeg to convert frames to MP4
-ffmpeg_path = "C:/ffmpeg/ffmpeg-2025-02-06-git-6da82b4485-full_build/bin/ffmpeg.exe"
 ffmpeg_command = [
-    ffmpeg_path,
-    "-framerate", str(fps),
-    "-i", os.path.join(temp_dir, "frame_%04d.png"),
-    "-c:v", "libx264",
-    "-preset", "fast",
-    "-crf", "23",
-    "-pix_fmt", "yuv420p",
+    "ffmpeg", 
+    "-framerate", str(fps), 
+    "-i", os.path.join(temp_dir, "frame_%04d.png"), 
+    "-c:v", "libx264", 
+    "-pix_fmt", "yuv420p", 
     output_video
 ]
+subprocess.run(ffmpeg_command)
 
-# Run FFmpeg
-subprocess.run(ffmpeg_command, check=True)
-
-# Clean up temporary frames
-for file in os.listdir(temp_dir):
-    os.remove(os.path.join(temp_dir, file))
+# Cleanup temporary frames
+for frame_file in os.listdir(temp_dir):
+    os.remove(os.path.join(temp_dir, frame_file))
 os.rmdir(temp_dir)
