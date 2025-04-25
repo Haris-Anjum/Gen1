@@ -39,5 +39,5 @@ Thumbs.db
 # Tailwind and Vite cache files
 .tailwind/
 .vite/
-D:/Gen1-FYP-dev/backend/venv/
-D:/Gen1-FYP-dev/backend/venv2/
+backend/venv/
+backend/venv2/
