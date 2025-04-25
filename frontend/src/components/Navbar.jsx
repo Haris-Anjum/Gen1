@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { close, logo, menu } from '../assets';
 import { navLinks } from '../constants';
-import { Link } from 'react-router-dom'; // Import Link from react-router-dom
+import { Link, useLocation } from 'react-router-dom'; // Import useLocation
 
 const Navbar = () => {
   const [toggle, setToggle] = useState(false);
+  const location = useLocation(); // Get current location
+  const isDetectPage = location.pathname === '/detect'; // Check if we're on detect page
 
   return (
     <nav className="w-full flex py-6 justify-between items-center navbar">
       <Link to="/">
-        <img src={logo} alt="Logo" className="w-[124px] h-[60px] cursor-pointer" />
+        <img 
+          src={logo} 
+          alt="Logo" 
+          className={`${isDetectPage ? 'w-[160px] h-[80px]' : 'w-[124px] h-[60px]'} cursor-pointer ml-8`} 
+        />
       </Link>
       
       {/* Desktop Navigation */}

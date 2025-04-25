@@ -1,7 +1,24 @@
-torch
-torchvision
-numpy
-opencv-python
-mtcnn
-facenet-pytorch
-mediapipe
+# torch
+# torchvision
+# numpy
+# opencv-python
+# mtcnn
+# facenet-pytorch
+# mediapipe
+
+
+# conda create -n aigvdet python=3.9
+# torch==2.0.0+cu117
+# torchvision==0.15.1+cu117
+# --extra-index-url https://download.pytorch.org/whl/cu117
+
+einops
+imageio
+ipympl
+matplotlib
+pandas
+scikit-learn
+tensorboard
+tensorboardX
+tqdm
+blobfile>=1.0.5

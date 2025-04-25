@@ -1,6 +1,5 @@
 import React from "react";
-import { card } from "../assets";
-import Button from "./Button";
+import { mask } from "../assets";
 import styles, { layout } from "../style";
 
 const CardDeal = () => {
@@ -17,10 +16,9 @@ const CardDeal = () => {
           AI-generated media. Using a multi-step verification process, we ensure
           high accuracy in detecting manipulated content.
         </p>
-        <Button styles="mt-10" />
       </div>
       <div className={layout.sectionImg}>
-        <img src={card} alt="card" className="w-[100%] h-[100%]" />
+        <img src={mask} alt="mask" className="w-[100%] h-[100%]" />
       </div>
     </section>
   );

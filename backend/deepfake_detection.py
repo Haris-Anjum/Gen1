@@ -6,17 +6,42 @@ import os
 import json
 from tensorflow.keras.models import load_model
 
+def compress_video(input_path, output_path, target_width=1280, target_height=720, target_fps=30):
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        print(json.dumps({"error": "Failed to open video for compression"}))
+        sys.exit(1)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use mp4v for .mp4 format
+    out = cv2.VideoWriter(output_path, fourcc, target_fps, (target_width, target_height))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Resize frame to 720p
+        frame = cv2.resize(frame, (target_width, target_height))
+        out.write(frame)
+
+    cap.release()
+    out.release()
+    return output_path
+
 # Ensure a video file is provided
 if len(sys.argv) < 2:
     print(json.dumps({"error": "No video file provided"}))
     sys.exit(1)
 
-video_path = sys.argv[1]  # Get video path from command-line argument
+original_video_path = sys.argv[1]  # Get video path from command-line argument
 
 # Ensure the video file exists
-if not os.path.exists(video_path):
+if not os.path.exists(original_video_path):
     print(json.dumps({"error": "Video file not found"}))
     sys.exit(1)
+
+# Compress video
+compressed_video_path = "compressed_temp_video.mp4"
+video_path = compress_video(original_video_path, compressed_video_path)
 
 # Load the trained deepfake detection model
 model = load_model('model/deepfake_detection_lstm.h5', compile=False)
@@ -36,7 +61,7 @@ total_frames = 0
 real_frames = 0
 fake_frames = 0
 total_confidence = 0.0
-confidence_scores = []  # List to hold confidence scores for each 5th frame
+confidence_scores = []  # List to hold confidence scores for every 5th frame
 
 while cap.isOpened():
     frame_id = int(cap.get(cv2.CAP_PROP_POS_FRAMES))  # Get current frame ID
@@ -46,64 +71,50 @@ while cap.isOpened():
 
     # Process frames at specified intervals
     if frame_id % 5 == 0:
-        # Convert frame to grayscale for face detection
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Detect faces in the frame
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-        # Process detected faces
         for (x, y, w, h) in faces:
-            total_frames += 1  # Increment frame count
-
-            # Extract and preprocess face region
+            total_frames += 1
             face_img = frame[y:y+h, x:x+w]
             face_img = cv2.resize(face_img, (128, 128)) / 255.0
-            face_img = np.expand_dims(face_img, axis=0)  # Add batch dimension
+            face_img = np.expand_dims(face_img, axis=0)
 
             try:
-                # Model prediction
-                prediction = model.predict(face_img, verbose=0)  # Suppress logs
-                confidence_score = float(prediction[0][0])  # Ensure it's a float
-                
+                prediction = model.predict(face_img, verbose=0)
+                confidence_score = float(prediction[0][0])
                 predicted_class = 1 if confidence_score >= 0.5 else 0
-                
-                # Adjust confidence score for correct interpretation
+
                 if predicted_class == 0:
                     confidence_score = 1 - confidence_score
 
-                # Count real and fake frames
                 if predicted_class == 1:
                     fake_frames += 1
                 else:
                     real_frames += 1
 
-                # Accumulate confidence score
                 total_confidence += confidence_score
-
-                # Append confidence score for every 5th frame
                 confidence_scores.append(confidence_score)
 
             except Exception as e:
                 print(json.dumps({"error": f"Prediction error: {str(e)}"}))
                 sys.exit(1)
 
-# Calculate final average confidence
+# Final calculations
 average_confidence = round(total_confidence / total_frames, 4) if total_frames > 0 else 0
-
-# Determine final video classification
 final_prediction = "Real" if real_frames >= fake_frames else "Fake"
 
-# Prepare JSON output
+# Output result
 result = {
-    "video": os.path.basename(video_path),
+    "video": os.path.basename(original_video_path),
     "prediction": final_prediction,
     "confidence": average_confidence,
-    "confidence_scores": confidence_scores  # Add the list of confidence scores
+    "confidence_scores": confidence_scores
 }
 
-# Ensure ONLY valid JSON is printed
-sys.stdout.write(json.dumps(result) + "\n")  # Avoid unwanted prints
+sys.stdout.write(json.dumps(result) + "\n")
 
-# Release resources
+# Cleanup
 cap.release()
+if os.path.exists(compressed_video_path):
+    os.remove(compressed_video_path)

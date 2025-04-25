@@ -1,7 +1,6 @@
 import airbnb from "./airbnb.png";
 import bill from "./bill.png";
 import binance from "./binance.png";
-import card from "./card.png";
 import coinbase from "./coinbase.png";
 import dropbox from "./dropbox.png";
 import logo from "./logo.svg";
@@ -26,11 +25,13 @@ import people03 from "./people03.png";
 import robotface from "./RobotFace.png";
 import videosora from "./videosora.mp4";
 import map from "./map.png";
+import mask from "./mask.png";
+import dp from "./dp.mp4";
 export {
   airbnb,
+  dp,
   bill,
   binance,
-  card,
   coinbase,
   dropbox,
   logo,
@@ -55,4 +56,5 @@ export {
   robotface,
   videosora,
   map,
+  mask,
 };

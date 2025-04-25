@@ -1,6 +1,7 @@
 import React from "react";
 import { apple, bill, discount, google, map, videosora } from "../assets";
 import styles, { layout } from "../style";
+import { Link } from "react-router-dom";  // ← import Link
 
 const Billing = () => {
   return (
@@ -25,12 +26,16 @@ const Billing = () => {
           models like Stable Diffusion, Pika, and Sora. Using trace analysis, we
           distinguish real footage from synthetic content.
         </p>
-        <div className="flex flex-row justify-center items-center py-4 px-6 bg-blue-gradient font-poppins font-medium text-[18px] text-primary rounded-[10px] mt-4 mb-2">
-  <p className="text-black text-center">
-    <span className="font-bold">Coming Soon:</span> <span className="text-lg">AI Detection Module</span> 
-  </p>
-</div>
 
+        {/* Link wraps the banner and navigates to your AI‑Detect route */}
+        <Link to="/ai-detect" className="block">
+          <div className="flex flex-row justify-center items-center py-4 px-6 bg-blue-gradient font-poppins font-medium text-[18px] text-primary rounded-[10px] mt-4 mb-2 hover:opacity-80 transition-opacity">
+            <p className="text-black text-center">
+              <span className="font-bold">Try it now:</span>{" "}
+              <span className="text-lg">AI Detection Module</span>
+            </p>
+          </div>
+        </Link>
       </div>
     </section>
   );

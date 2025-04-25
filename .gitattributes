@@ -1,3 +1,8 @@
 backend/df_model.pt filter=lfs diff=lfs merge=lfs -text
 backend/model/df_model.pt filter=lfs diff=lfs merge=lfs -text
 backend/model/deepfake_detection_lstm.h5 filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.h5 filter=lfs diff=lfs merge=lfs -text
+D:/Gen1-FYP-dev/backend/checkpoints/optical.pth filter=lfs diff=lfs merge=lfs -text
+D:/Gen1-FYP-dev/backend/checkpoints/original.pth filter=lfs diff=lfs merge=lfs -text
+D:/Gen1-FYP-dev/backend/raft_model/raft-things.pth filter=lfs diff=lfs merge=lfs -text
