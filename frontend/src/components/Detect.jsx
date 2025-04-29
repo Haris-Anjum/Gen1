@@ -63,9 +63,7 @@ const ParticleTest = () => {
         setResult(
           `Prediction: ${data.prediction}, Confidence: ${(
             data.confidence * 100
-            
           ).toFixed(2)}%`
-          
         );
         setProcessedVideo(data.processed_video_url);
         setVideoResult(data.prediction); // Store the detection result
@@ -89,19 +87,22 @@ const ParticleTest = () => {
   // Function to handle downloading the report
   const handleDownloadReport = async () => {
     if (!videoResult) return;
-    
+
     try {
-      const response = await fetch("http://localhost:5000/api/generate-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          // videoResult: videoResult, // Pass the result of the deepfake detection
-          anomalousFrames: anomalousFrames, // Pass the anomalous frames (if any)
-          confidence_scores: result,
-        }),
-      });
+      const response = await fetch(
+        "http://localhost:5000/api/generate-report",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            // videoResult: videoResult, // Pass the result of the deepfake detection
+            anomalousFrames: anomalousFrames, // Pass the anomalous frames (if any)
+            confidence_scores: result,
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to generate report.");
@@ -120,7 +121,7 @@ const ParticleTest = () => {
   return (
     <div className="w-full min-h-screen flex flex-col bg-[#00040f]">
       <Navbar />
-      
+
       {/* Main Content with Particles */}
       <div className="flex-grow relative">
         {/* Particles Background */}
@@ -146,7 +147,7 @@ const ParticleTest = () => {
                 opacity: 0.4,
                 width: 1,
               },
-              move: { enable: true, speed: 1 },
+              move: { enable: true, speed: 3 },
             },
             interactivity: {
               events: { onHover: { enable: true, mode: "repulse" } },
@@ -160,11 +161,15 @@ const ParticleTest = () => {
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4 sm:mb-6">
             Scan and Detect DeepFake Videos
           </h1>
-          <p className="text-base sm:text-lg text-white mb-4 sm:mb-6">Upload your video here</p>
+          <p className="text-base sm:text-lg text-white mb-4 sm:mb-6">
+            Upload your video here
+          </p>
 
           {/* File Upload */}
           <label className="cursor-pointer w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto flex justify-center items-center bg-gradient-to-r from-[#00ffff] to-[#1e88e5] text-white py-3 rounded-full shadow-lg transition-transform transform hover:scale-105">
-            <span className="font-semibold text-sm sm:text-base">Choose File</span>
+            <span className="font-semibold text-sm sm:text-base">
+              Choose File
+            </span>
             <input
               type="file"
               accept="video/*"
@@ -174,7 +179,9 @@ const ParticleTest = () => {
           </label>
 
           {uploadMessage && (
-            <p className="mt-2 text-green-400 font-semibold text-sm sm:text-base">{uploadMessage}</p>
+            <p className="mt-2 text-green-400 font-semibold text-sm sm:text-base">
+              {uploadMessage}
+            </p>
           )}
 
           {/* Scan Button */}
@@ -200,7 +207,9 @@ const ParticleTest = () => {
           {/* Processed Video */}
           {processedVideo && (
             <div className="mt-4 sm:mt-6 w-full max-w-4xl mx-auto px-4 flex flex-col items-center">
-              <h2 className="text-white text-base sm:text-lg font-semibold mb-4 text-center">Processed Video</h2>
+              <h2 className="text-white text-base sm:text-lg font-semibold mb-4 text-center">
+                Processed Video
+              </h2>
               <div className="w-full flex justify-center">
                 <video
                   controls

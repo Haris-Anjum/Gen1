@@ -266,8 +266,8 @@ app.post("/api/ai-detect", upload.single("video"), (req, res) => {
 
   // Modified command to ensure proper environment activation
   const pythonCmd = isWindows
-    ? `venv2\\Scripts\\python demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame\\${filenameWithoutExt}" --folder_optical_flow_path "optical_result\\${filenameWithoutExt}" -mop "checkpoints\\optical.pth" -mor "checkpoints\\original.pth"`
-    : `source venv2/bin/activate && python demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame/${filenameWithoutExt}" --folder_optical_flow_path "optical_result/${filenameWithoutExt}" -mop "checkpoints/optical.pth" -mor "checkpoints/original.pth""`;
+    ? `venv2\\Scripts\\python demo.py --path "${videoPath}" --folder_original_path "frame\\${filenameWithoutExt}" --folder_optical_flow_path "optical_result\\${filenameWithoutExt}" -mop "checkpoints\\optical.pth" -mor "checkpoints\\original.pth"`
+    : `source venv2/bin/activate && python demo.py --path "${videoPath}" --folder_original_path "frame/${filenameWithoutExt}" --folder_optical_flow_path "optical_result/${filenameWithoutExt}" -mop "checkpoints/optical.pth" -mor "checkpoints/original.pth"`;
   // ? `"${path.join(
   //     __dirname,
   //     "venv",

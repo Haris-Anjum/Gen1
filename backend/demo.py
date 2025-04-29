@@ -28,7 +28,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_auc_sco
 
 
 
-DEVICE = 'cuda'
+DEVICE = torch.device('cuda:0')
 # DEVICE = 'cpu'  # Changed to 'cpu'
 
 
@@ -246,8 +246,7 @@ if __name__ == '__main__':
         state_dict = state_dict["model"]
     model_op.load_state_dict(state_dict)
     model_op.eval()
-    if not args.use_cpu:
-        model_op.cuda()
+    model_op.to(DEVICE)
 
     model_or = get_network(args.arch)
     state_dict = torch.load(args.model_original_path, map_location="cpu")
@@ -255,8 +254,7 @@ if __name__ == '__main__':
         state_dict = state_dict["model"]
     model_or.load_state_dict(state_dict)
     model_or.eval()
-    if not args.use_cpu:
-        model_or.cuda()
+    model_or.to(DEVICE)
 
 
     trans = transforms.Compose(
@@ -351,6 +349,8 @@ if __name__ == '__main__':
     #     print("Fake video")
 
     final_prediction = "Real" if predict<args.threshold else "Fake"
+    if final_prediction == "Real":
+        predict=1-predict
 
     try:
         combined_image_path = combine_random_frames(
