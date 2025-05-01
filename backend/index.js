@@ -59,16 +59,20 @@ Focus on objective technical details that can help a user understand the rationa
 
   const aiGeneratedPrompt = `The video has been classified as ${confidence_scores}. Please analyze both the RGB frames and optical flow patterns shown in the images. The first two frames show the original video content, while the last two show the optical flow visualization.
 
-Please provide a detailed analysis of:
-1. Visual Consistency: Examine the RGB frames for natural lighting, textures, and object/scene consistency
-2. Motion Analysis: Analyze the optical flow patterns for:
-   - Natural motion trajectories
-   - Consistency between frames
-   - Any artifacts or unusual patterns that might indicate AI generation
-3. Technical Indicators: Identify specific technical elements that suggest AI generation vs. real footage
-4. Overall Assessment: Explain how the combination of visual and motion analysis supports the classification
+Please provide a detailed analysis in paragraph form with section headings in plain text (no asterisks, no numbers, no Markdown). Each section heading should be on its own line and not formatted with stars or symbols.
 
-Write the analysis in clear, professional paragraphs, focusing on technical details while remaining accessible to non-experts.`;
+Use the following section titles exactly as written:
+Visual Consistency
+Motion Analysis
+Technical Indicators
+Overall Assessment
+
+Each section should:
+- Begin with the plain section title on its own line
+- Contain a clear and detailed paragraph explaining that aspect of the analysis
+- Focus on objective visual and motion-based cues supporting the AI classification
+
+Keep the language professional and easy to understand.`;
 
   const messages = [
     { role: "system", content: "You are an AI assistant with vision." },
@@ -197,6 +201,15 @@ app.post("/api/detect", upload.single("video"), (req, res) => {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
+  // Check file size (10MB = 10 * 1024 * 1024 bytes)
+  if (req.file.size > 10 * 1024 * 1024) {
+    // Delete the uploaded file
+    fs.unlinkSync(path.join(uploadDir, req.file.filename));
+    return res.status(400).json({
+      error: "File size exceeds 10MB limit. Please upload a smaller video.",
+    });
+  }
+
   const videoPath = path.join(uploadDir, req.file.filename);
   const outputVideoPath = path.join(
     uploadDir,
@@ -209,49 +222,69 @@ app.post("/api/detect", upload.single("video"), (req, res) => {
     : `source venv/bin/activate && python deepfake_detection.py "${videoPath}"`;
 
   exec(pythonCmd, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Deepfake error: ${error.message}`);
-      return res
-        .status(500)
-        .json({ error: "Error running deepfake detection" });
-    }
-    if (stderr) console.error(stderr);
+    console.log("Python stdout:", stdout);
+    console.error("Python stderr:", stderr);
 
-    let result;
+    // First try to parse stdout as JSON
     try {
-      result = JSON.parse(stdout);
-    } catch (parseErr) {
-      console.error("Parse error:", parseErr);
-      return res.status(500).json({ error: "Error parsing detection result" });
-    }
-
-    const faceMeshCmd = isWindows
-      ? `venv\\Scripts\\python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" '${JSON.stringify(
-          result.confidence_scores
-        )}'`
-      : `source venv/bin/activate && python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" '${JSON.stringify(
-          result.confidence_scores
-        )}'`;
-
-    exec(faceMeshCmd, (meshErr, meshStdout, meshStderr) => {
-      if (meshErr) {
-        console.error(`FaceMesh error: ${meshErr.message}`);
-        return res
-          .status(500)
-          .json({ error: "Error processing video with FaceMesh" });
+      // Find the last JSON object in stdout
+      const jsonMatch = stdout.match(/\{.*\}/s);
+      if (!jsonMatch) {
+        throw new Error("No valid JSON found in output");
       }
-      if (meshStderr) console.error(meshStderr);
 
-      const waitForOutput = setInterval(() => {
-        if (fs.existsSync(outputVideoPath)) {
-          clearInterval(waitForOutput);
-          res.json({
-            ...result,
-            processed_video_url: `http://localhost:${port}/uploads/processed_${req.file.filename}`,
-          });
+      const result = JSON.parse(jsonMatch[0]);
+
+      // Check for any error from the Python script
+      if (result.error) {
+        console.error("Python script error:", result.error);
+        return res.status(400).json({ error: result.error });
+      }
+
+      // If we got here, it's a valid result - proceed with face mesh detection
+      const faceMeshCmd = isWindows
+        ? `venv\\Scripts\\python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" '${JSON.stringify(
+            result.confidence_scores
+          )}'`
+        : `source venv/bin/activate && python face_mesh_detection.py "${videoPath}" "${outputVideoPath}" '${JSON.stringify(
+            result.confidence_scores
+          )}'`;
+
+      exec(faceMeshCmd, (meshErr, meshStdout, meshStderr) => {
+        if (meshErr) {
+          console.error(`FaceMesh error: ${meshErr.message}`);
+          return res
+            .status(500)
+            .json({ error: "Error processing video with FaceMesh" });
         }
-      }, 1000);
-    });
+        if (meshStderr) console.error(meshStderr);
+
+        const waitForOutput = setInterval(() => {
+          if (fs.existsSync(outputVideoPath)) {
+            clearInterval(waitForOutput);
+            res.json({
+              ...result,
+              processed_video_url: `http://localhost:${port}/uploads/processed_${req.file.filename}`,
+            });
+          }
+        }, 1000);
+      });
+    } catch (parseErr) {
+      // If stdout isn't JSON, check if it's an error
+      if (error) {
+        console.error(`Deepfake error: ${error.message}`);
+        return res.status(400).json({
+          error:
+            error.message ||
+            "Error processing video: Please upload a valid video file",
+        });
+      }
+      // If we got here, something unexpected happened
+      console.error("Unexpected error:", parseErr);
+      return res.status(500).json({
+        error: stderr || "Error processing video. Please try again.",
+      });
+    }
   });
 });
 
@@ -260,21 +293,24 @@ app.post("/api/ai-detect", upload.single("video"), (req, res) => {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
+  // Check if the uploaded file is an image
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'];
+  const fileExt = path.extname(req.file.originalname).toLowerCase();
+  
+  if (imageExtensions.includes(fileExt)) {
+    return res.status(400).json({ 
+      error: "Please upload a video file. Image files are not supported." 
+    });
+  }
+
   const videoPath = path.join(uploadDir, req.file.filename);
   const filenameWithoutExt = path.parse(req.file.filename).name;
   const isWindows = process.platform === "win32";
 
   // Modified command to ensure proper environment activation
   const pythonCmd = isWindows
-    ? `venv2\\Scripts\\python demo.py --path "${videoPath}" --folder_original_path "frame\\${filenameWithoutExt}" --folder_optical_flow_path "optical_result\\${filenameWithoutExt}" -mop "checkpoints\\optical.pth" -mor "checkpoints\\original.pth"`
-    : `source venv2/bin/activate && python demo.py --path "${videoPath}" --folder_original_path "frame/${filenameWithoutExt}" --folder_optical_flow_path "optical_result/${filenameWithoutExt}" -mop "checkpoints/optical.pth" -mor "checkpoints/original.pth"`;
-  // ? `"${path.join(
-  //     __dirname,
-  //     "venv",
-  //     "Scripts",
-  //     "python.exe"
-  //   )}" demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame\\${filenameWithoutExt}" --folder_optical_flow_path "optical_result\\${filenameWithoutExt}" -mop "checkpoints\\optical.pth" -mor "checkpoints\\original.pth"`
-  // : `source venv/bin/activate && python demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame/${filenameWithoutExt}" --folder_optical_flow_path "optical_result/${filenameWithoutExt}" -mop "checkpoints/optical.pth" -mor "checkpoints/original.pth"`;
+    ? `venv2\\Scripts\\python demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame\\${filenameWithoutExt}" --folder_optical_flow_path "optical_result\\${filenameWithoutExt}" -mop "checkpoints\\optical.pth" -mor "checkpoints\\original.pth"`
+    : `source venv2/bin/activate && python demo.py --use_cpu --path "${videoPath}" --folder_original_path "frame/${filenameWithoutExt}" --folder_optical_flow_path "optical_result/${filenameWithoutExt}" -mop "checkpoints/optical.pth" -mor "checkpoints/original.pth"`;
 
   exec(pythonCmd, { cwd: __dirname }, (error, stdout, stderr) => {
     console.log("Python output:", stdout);

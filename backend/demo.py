@@ -28,8 +28,14 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_auc_sco
 
 
 
-DEVICE = torch.device('cuda:0')
-# DEVICE = 'cpu'  # Changed to 'cpu'
+# Set device based on command line argument
+def get_device():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--device', type=str, default='cuda', help='Device to use (cuda or cpu)')
+    args, _ = parser.parse_known_args()
+    return args.device
+
+DEVICE = get_device()
 
 
 def compress_frame(frame, target_height=720, quality=80):
@@ -92,10 +98,29 @@ def viz(img, flo, folder_optical_flow_path, imfile1):
 
 
 def video_to_frames(video_path, output_folder):
+    # Check if file is an image
+    if video_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
+        print(json.dumps({
+            "error": "Please upload a video file. Image files are not supported.",
+            "prediction": "Unknown",
+            "confidence": 0.0
+        }))
+        sys.stdout.flush()
+        sys.exit(1)
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(json.dumps({
+            "error": "Failed to open the video file. Please ensure it's a valid video format.",
+            "prediction": "Unknown",
+            "confidence": 0.0
+        }))
+        sys.stdout.flush()
+        sys.exit(1)
+    
     frame_count = 0
     
     while cap.isOpened():
@@ -111,6 +136,15 @@ def video_to_frames(video_path, output_folder):
         frame_count += 1
     
     cap.release()
+
+    if frame_count == 0:
+        print(json.dumps({
+            "error": "No frames could be extracted from the video. Please ensure it's a valid video file.",
+            "prediction": "Unknown",
+            "confidence": 0.0
+        }))
+        sys.stdout.flush()
+        sys.exit(1)
 
     images = glob.glob(os.path.join(output_folder, '*.png')) + \
              glob.glob(os.path.join(output_folder, '*.jpg'))
@@ -133,18 +167,37 @@ def OF_gen(args):
 
     with torch.no_grad():
         images = video_to_frames(args.path, args.folder_original_path)
+        if not images:
+            print(json.dumps({
+                "error": "No frames could be extracted from the video. Please check if the video is valid.",
+                "prediction": "Unknown",
+                "confidence": 0.0
+            }))
+            sys.stdout.flush()
+            sys.exit(1)
+            
         images = natsorted(images)
+        print(f"Processing {len(images)} frames for optical flow...", file=sys.stderr)
 
         for imfile1, imfile2 in zip(images[:-1], images[1:]):
-            image1 = load_image(imfile1)
-            image2 = load_image(imfile2)
+            try:
+                image1 = load_image(imfile1)
+                image2 = load_image(imfile2)
 
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(image1, image2)
+                padder = InputPadder(image1.shape)
+                image1, image2 = padder.pad(image1, image2)
 
-            flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
+                flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
 
-            viz(image1, flow_up,args.folder_optical_flow_path,imfile1)
+                viz(image1, flow_up, args.folder_optical_flow_path, imfile1)
+            except Exception as e:
+                print(json.dumps({
+                    "error": f"Error processing frames for optical flow: {str(e)}",
+                    "prediction": "Unknown",
+                    "confidence": 0.0
+                }))
+                sys.stdout.flush()
+                sys.exit(1)
 
 
 def combine_random_frames(rgb_folder, optical_folder, output_dir="temp_frames"):
@@ -236,7 +289,11 @@ if __name__ == '__main__':
     parser.add_argument("--use_cpu", action="store_true", help="uses gpu by default, turn on to use cpu")
     parser.add_argument("--arch", type=str, default="resnet50")
     parser.add_argument("--aug_norm", type=str2bool, default=True)
+    parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda or cpu)")
     args = parser.parse_args()
+
+    # Set device based on args
+    DEVICE = args.device
 
     OF_gen(args)
 
@@ -246,7 +303,8 @@ if __name__ == '__main__':
         state_dict = state_dict["model"]
     model_op.load_state_dict(state_dict)
     model_op.eval()
-    model_op.to(DEVICE)
+    if not args.use_cpu:
+        model_op.cuda()
 
     model_or = get_network(args.arch)
     state_dict = torch.load(args.model_original_path, map_location="cpu")
@@ -254,7 +312,8 @@ if __name__ == '__main__':
         state_dict = state_dict["model"]
     model_or.load_state_dict(state_dict)
     model_or.eval()
-    model_or.to(DEVICE)
+    if not args.use_cpu:
+        model_or.cuda()
 
 
     trans = transforms.Compose(
@@ -298,22 +357,39 @@ if __name__ == '__main__':
                     
     #optical flow detection
     optical_file_list = sorted(glob.glob(os.path.join(optical_subsubfolder_path, "*.jpg")) + glob.glob(os.path.join(optical_subsubfolder_path, "*.png"))+glob.glob(os.path.join(optical_subsubfolder_path, "*.JPEG")))
+    
+    if not optical_file_list:
+        print(json.dumps({
+            "error": "No optical flow frames were generated. Please check if the video contains sufficient motion.",
+            "prediction": "Unknown",
+            "confidence": 0.0
+        }))
+        sys.stdout.flush()
+        sys.exit(1)
+        
     optical_prob_sum=0
     for img_path in tqdm(optical_file_list, dynamic_ncols=True, disable=len(original_file_list) <= 1):
-                        
-        img = Image.open(img_path).convert("RGB")
-        img = trans(img)
-        if args.aug_norm:
-            img = TF.normalize(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        in_tens = img.unsqueeze(0)
-        if not args.use_cpu:
-            in_tens = in_tens.cuda()
+        try:
+            img = Image.open(img_path).convert("RGB")
+            img = trans(img)
+            if args.aug_norm:
+                img = TF.normalize(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            in_tens = img.unsqueeze(0)
+            if not args.use_cpu:
+                in_tens = in_tens.cuda()
 
-        with torch.no_grad():
-            prob = model_op(in_tens).sigmoid().item()
-            optical_prob_sum+=prob
+            with torch.no_grad():
+                prob = model_op(in_tens).sigmoid().item()
+                optical_prob_sum+=prob
+        except Exception as e:
+            print(json.dumps({
+                "error": f"Error processing optical flow frame: {str(e)}",
+                "prediction": "Unknown",
+                "confidence": 0.0
+            }))
+            sys.stdout.flush()
+            sys.exit(1)
 
-                    
     optical_predict=optical_prob_sum/len(optical_file_list)
     # print("optical prob",optical_predict)
     
@@ -377,13 +453,3 @@ if __name__ == '__main__':
             "confidence": float(predict)
         }))
         sys.stdout.flush()
-
-
-
-
-
-
-
-
-
-
